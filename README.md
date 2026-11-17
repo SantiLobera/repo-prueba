@@ -81,55 +81,57 @@ El flujo de operación se resume en tres etapas:
 <details>
 <summary>Dealer</summary>
 
- 
-
 <details>
 <summary>diagrama de flujo del Dealer</summary>
 
 ```mermaid
-
----
-config:
-  theme: redux-dark-color
----
+%%{init: {'theme': 'dark'}}%%
 flowchart TD
-    A([Inicio / Reset]) --> B[Configurar Puertos, UART 9600 bps e Interrupciones]
-    B --> C[Apagar Displays/LEDs y Limpiar Variables RAM]
-    C --> D{¿Byte UART recibido?}
+    A(["Inicio / Reset"]) --> B["Configurar Puertos, UART 9600 bps e Interrupciones"]
+    B --> C["Apagar Displays y LEDs, Limpiar Variables RAM"]
+    C --> D{"Byte UART recibido?"}
     D -- No --> D
-    D -- Sí --> E{¿Sync=1 y es Carta?}
+    D -- Si --> E{"Sync = 1 y es Carta?"}
     E -- No --> D
-    E -- Sí --> F[Decodificar Carta/Palo y Guardar en RAM Jugadores]
+    E -- Si --> F["Decodificar Carta y Palo en RAM Jugadores"]
     F --> D
 
-    subgraph ISR [Rutina de Interrupción]
-        G{¿Origen Interrupción?}
+    subgraph ISR ["Rutina de Interrupcion"]
+        G{"Origen Interrupcion?"}
         
-        G -- TMR0 --> H[Multiplexar 5 Displays y 5 LEDs RGB]
-        H --> I[Incrementar Contadores RNG Carta y Palo]
-        I --> J([RETFIE])
+        G -- TMR0 --> H["Multiplexar 5 Displays y 5 LEDs RGB"]
+        H --> I["Incrementar Contadores RNG Carta y Palo"]
+        I --> J(["RETFIE"])
 
-        G -- Pulsador RB0 --> K[Capturar RNG y Traducir Tablas]
-        K --> L{¿Carta Repetida en Jugadores o Mesa?}
-        L -- Sí --> M[Señalizar Palo Repetido y Descartar]
+        G -- Pulsador RB0 --> K["Capturar RNG y Traducir Tablas"]
+        K --> L{"Carta Repetida en Jugadores o Mesa?"}
+        L -- Si --> M["Senalizar Palo Repetido y Descartar"]
         M --> J
-        L -- No --> N[Guardar Carta/Palo en RAM Mesa]
-        N --> O[Armar y Enviar Trama 2 Bytes por UART]
-        O --> P[Actualizar Índice CANT_CARTAS]
+        L -- No --> N["Guardar Carta y Palo en RAM Mesa"]
+        N --> O["Armar y Enviar Trama 2 Bytes por UART"]
+        O --> P["Actualizar Indice CANT_CARTAS"]
         P --> J
     end
 
+    style D fill:#334155,stroke:#94a3b8,color:#f8fafc
+    style H fill:#1e3a8a,stroke:#60a5fa,color:#f8fafc
+    style L fill:#713f12,stroke:#facc15,color:#f8fafc
+    style O fill:#14532d,stroke:#4ade80,color:#f8fafc
 ```
 
+</details>
+
 <details>
-<summary>Esquema e imagenes del dealer</summary>
-asdasd
+<summary>esquemas e imagenes del Dealer</summary>
+
+asdasdas
+
+</details>
 
 <details>
 <summary>codigo del dealer</summary>
 
-```assembly
-
+```asm
     LIST P=16F887
     #INCLUDE "p16f887.inc"
     ERRORLEVEL -305
@@ -780,68 +782,69 @@ FIN_ISR:
     end
 
 
-
 ```
 
 </details>
 
+</details>
 
 <details>
 <summary>Jugadores</summary>
-
-asdasd
 
 <details>
 <summary>diagrama de flujo de los jugadores</summary>
 
 ```mermaid
-
----
-config:
-  theme: redux-dark-color
----
+%%{init: {'theme': 'dark'}}%%
 flowchart TD
-    A([Inicio / Reset]) --> B[Configurar Puertos, UART 9600 bps e Interrupciones]
-    B --> C[Apagar Displays, LEDs y Limpiar Variables RAM]
-    C --> D((LOOP Principal))
+    A(["Inicio / Reset"]) --> B["Configurar Puertos, UART 9600 bps e Interrupciones"]
+    B --> C["Apagar Displays, LEDs y Limpiar Variables RAM"]
+    C --> D(("LOOP Principal"))
     D --> D
 
-    subgraph ISR [Rutina de Interrupción]
-        E{¿Origen de Interrupción?}
+    subgraph ISR ["Rutina de Interrupcion"]
+        E{"Origen Interrupcion?"}
         
-        E -- TMR0 --> F[Multiplexar 2 Displays y 2 LEDs RGB]
-        F --> G([RETFIE])
+        E -- TMR0 --> F["Multiplexar 2 Displays y 2 LEDs RGB"]
+        F --> G(["RETFIE"])
 
-        E -- UART RX --> H[Leer Byte 1 y Byte 2]
-        H --> I{¿Bit Reset = 1?}
-        I -- Sí --> C
-        I -- No --> J{¿Es Carta Privada?}
-        J -- Sí --> K[Guardar Carta y Palo en RAM]
+        E -- UART RX --> H["Leer Byte 1 y Byte 2"]
+        H --> I{"Bit Reset = 1?"}
+        I -- Si --> C
+        I -- No --> J{"Es Carta Privada?"}
+        J -- Si --> K["Guardar Carta y Palo en RAM"]
         K --> G
-        J -- No --> L[Actualizar Apuesta Vigente y Habilitar Turno]
+        J -- No --> L["Actualizar Apuesta Vigente y Habilitar Turno"]
         L --> G
 
-        E -- Pulsador / Tecla --> M{¿Tiene el Turno?}
+        E -- Pulsador --> M{"Tiene el Turno?"}
         M -- No --> G
-        M -- Sí --> N[Leer Acción: Pasar, Apostar, Igualar o Bajarse]
-        N --> O[Armar Trama 2 Bytes y Ceder Turno]
-        O --> P[Enviar Trama por UART a PC]
-        P --> Q[Deshabilitar Turno Local]
+        M -- Si --> N["Leer Accion: Pasar, Apostar, Igualar o Bajarse"]
+        N --> O["Armar Trama 2 Bytes y Ceder Turno"]
+        O --> P["Enviar Trama por UART a PC"]
+        P --> Q["Deshabilitar Turno Local"]
         Q --> G
     end
 
+    style D fill:#334155,stroke:#94a3b8,color:#f8fafc
+    style F fill:#1e3a8a,stroke:#60a5fa,color:#f8fafc
+    style K fill:#14532d,stroke:#4ade80,color:#f8fafc
+    style P fill:#713f12,stroke:#facc15,color:#f8fafc
 ```
 
+</details>
+
 <details>
-<summary>Esquema e imagenes de los jugadores</summary>
-asdasd
+<summary>esquemas e imagenes de los jugadores</summary>
+
+asdasdas
+
+</details>
 
 <details>
 <summary>codigo del jugador 1</summary>
 
-```assembly
-
-
+```asm
 LIST P=16F887
     #include <p16f887.inc>
 
@@ -1552,14 +1555,14 @@ ESPERA2
   GOTO LOOP
  
 END
-
 ```
+
+</details>
 
 <details>
 <summary>codigo del jugador 2</summary>
 
-```assembly
-
+```asm
 LIST P=16F887
     #include <p16f887.inc>
 
@@ -2274,7 +2277,8 @@ END
 
 
 
-
 ```
+
+</details>
 
 </details>
