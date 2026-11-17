@@ -78,8 +78,55 @@ El flujo de operación se resume en tres etapas:
 
 * Software y Lenguajes: MPLAB X IDE (programación en Assembler), Proteus 8 (simulación circuital) y Python 3 con las librerías Tkinter y PySerial (interfaz gráfica y enrutador serial).
 
+Diagrama de bloque general
+
+```mermaid
+%%{init: {'theme': 'dark'}}%%
+graph TD
+    subgraph PC_MASTER ["PC Central (Master)"]
+        PYTHON["Aplicación Python / Tkinter<br/>(Enrutador Serial, Registro y Bit-Packing)"]
+    end
+
+    subgraph NODO_DEALER ["Nodo Dealer (Mesa)"]
+        UART_D["Módulo Conversor USB-UART"]
+        PIC_D["PIC16F887<br/>(ID: 00)"]
+        TMR0["Timer0 + Pulsador RB0<br/>(Semilla Aleatoria)"]
+        DISP_D["5 Displays 7 Seg.<br/>/ 5 LEDs RGB"]
+        
+        UART_D <-->|"UART (9600 Baudios)"| PIC_D
+        PIC_D --> TMR0
+        PIC_D --> DISP_D
+    end
+
+    subgraph NODO_J1 ["Nodo Jugador 1"]
+        UART_J1["Módulo Conversor USB-UART"]
+        PIC_J1["PIC16F887<br/>(ID: 01)"]
+        MOSFET_J1["Driver MOSFET 2N7000<br/>/ LED Turno"]
+        DISP_J1["2 Displays 7 Seg.<br/>/ 2 LEDs RGB / Botones"]
+
+        UART_J1 <-->|"UART (9600 Baudios)"| PIC_J1
+        PIC_J1 --> MOSFET_J1
+        PIC_J1 --> DISP_J1
+    end
+
+    subgraph NODO_J2 ["Nodo Jugador 2"]
+        UART_J2["Módulo Conversor USB-UART"]
+        PIC_J2["PIC16F887<br/>(ID: 10)"]
+        MOSFET_J2["Driver MOSFET 2N7000<br/>/ LED Turno"]
+        DISP_J2["2 Displays 7 Seg.<br/>/ 2 LEDs RGB / Botones"]
+
+        UART_J2 <-->|"UART (9600 Baudios)"| PIC_J2
+        PIC_J2 --> MOSFET_J2
+        PIC_J2 --> DISP_J2
+    end
+
+    PYTHON <==>|"USB-TTL"| UART_D
+    PYTHON <==>|"USB-TTL"| UART_J1
+    PYTHON <==>|"USB-TTL"| UART_J2
+```
+
 <details>
-<summary><h2>Dealer</h2></summary>
+<summary><h3>Dealer</h3></summary>
 
 <blockquote>
 
@@ -793,7 +840,7 @@ FIN_ISR:
 </details>
 
 <details>
-<summary><h2>Jugadores</h2></summary>
+<summary><h3>Jugadores</h3></summary>
 
 <blockquote>
 
