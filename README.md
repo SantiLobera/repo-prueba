@@ -79,7 +79,7 @@ El flujo de operación se resume en tres etapas:
 * Software y Lenguajes: MPLAB X IDE (programación en Assembler), Proteus 8 (simulación circuital) y Python 3 con las librerías Tkinter y PySerial (interfaz gráfica y enrutador serial).
 
 <details>
-<summary>**Dealer**</summary>
+<summary>Dealer</summary>
 
  
 
@@ -121,14 +121,9 @@ flowchart TD
 
 ```
 
-</details>
-
 <details>
 <summary>Esquema e imagenes del dealer</summary>
 asdasd
-</details>
-
-</details>
 
 <details>
 <summary>codigo del dealer</summary>
@@ -790,8 +785,6 @@ FIN_ISR:
 
 </details>
 
-</details>
-
 
 <details>
 <summary>Jugadores</summary>
@@ -839,14 +832,9 @@ flowchart TD
 
 ```
 
-</details>
-
 <details>
 <summary>Esquema e imagenes de los jugadores</summary>
 asdasd
-</details>
-
-</details>
 
 <details>
 <summary>codigo del jugador 1</summary>
@@ -1566,8 +1554,6 @@ ESPERA2
 END
 
 ```
-
-</details>
 
 <details>
 <summary>codigo del jugador 2</summary>
@@ -2290,6 +2276,5 @@ END
 
 
 ```
-</details>
 
 </details>
