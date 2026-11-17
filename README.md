@@ -81,6 +81,8 @@ El flujo de operación se resume en tres etapas:
 <details>
 <summary>Dealer</summary>
 
+<blockquote>
+
 <details>
 <summary>diagrama de flujo del Dealer</summary>
 
@@ -786,10 +788,14 @@ FIN_ISR:
 
 </details>
 
+</blockquote>
+
 </details>
 
 <details>
 <summary>Jugadores</summary>
+
+<blockquote>
 
 <details>
 <summary>diagrama de flujo de los jugadores</summary>
@@ -2280,5 +2286,7 @@ END
 ```
 
 </details>
+
+</blockquote>
 
 </details>
