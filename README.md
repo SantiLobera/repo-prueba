@@ -79,18 +79,715 @@ El flujo de operación se resume en tres etapas:
 * Software y Lenguajes: MPLAB X IDE (programación en Assembler), Proteus 8 (simulación circuital) y Python 3 con las librerías Tkinter y PySerial (interfaz gráfica y enrutador serial).
 
 <details>
-<summary>Dealer</summary>
+<summary>**Dealer**</summary>
 
-asdasd
+ 
 
 <details>
 <summary>diagrama de flujo del Dealer</summary>
+
+```mermaid
+
+---
+config:
+  theme: redux-dark-color
+---
+flowchart TD
+    A([Inicio / Reset]) --> B[Configurar Puertos, UART 9600 bps e Interrupciones]
+    B --> C[Apagar Displays/LEDs y Limpiar Variables RAM]
+    C --> D{¿Byte UART recibido?}
+    D -- No --> D
+    D -- Sí --> E{¿Sync=1 y es Carta?}
+    E -- No --> D
+    E -- Sí --> F[Decodificar Carta/Palo y Guardar en RAM Jugadores]
+    F --> D
+
+    subgraph ISR [Rutina de Interrupción]
+        G{¿Origen Interrupción?}
+        
+        G -- TMR0 --> H[Multiplexar 5 Displays y 5 LEDs RGB]
+        H --> I[Incrementar Contadores RNG Carta y Palo]
+        I --> J([RETFIE])
+
+        G -- Pulsador RB0 --> K[Capturar RNG y Traducir Tablas]
+        K --> L{¿Carta Repetida en Jugadores o Mesa?}
+        L -- Sí --> M[Señalizar Palo Repetido y Descartar]
+        M --> J
+        L -- No --> N[Guardar Carta/Palo en RAM Mesa]
+        N --> O[Armar y Enviar Trama 2 Bytes por UART]
+        O --> P[Actualizar Índice CANT_CARTAS]
+        P --> J
+    end
+
+```
+
+</details>
+
+<details>
+<summary>Esquema e imagenes del dealer</summary>
 asdasd
+</details>
+
 </details>
 
 <details>
 <summary>codigo del dealer</summary>
-asdasd
+
+```assembly
+
+    LIST P=16F887
+    #INCLUDE "p16f887.inc"
+    ERRORLEVEL -305
+
+;-----------------------------------
+; Configuración
+;-----------------------------------
+    __CONFIG _CONFIG1, _FOSC_XT & _WDTE_OFF & _PWRTE_ON & _MCLRE_ON & _LVP_OFF
+    __CONFIG _CONFIG2, _BOR4V_BOR40V & _WRT_OFF
+
+;-----------------------------------
+; Declaración de Variables
+;-----------------------------------
+CARTA_J1 EQU 0x20 ;Carta 1 jugador 1
+CARTA_J2 EQU 0x21 ;Carta 2 jugador 1
+CARTA_J3 EQU 0x22 ;Carta 1 jugador 2
+CARTA_J4 EQU 0x23 ;Carta 2 jugador 2
+PALO_J1 EQU 0x24 ;palo 1 jugador 1
+PALO_J2 EQU 0x25 ;palo 2 jugador 1
+PALO_J3 EQU 0x26 ;palo 1 jugador 2
+PALO_J4 EQU 0x27 ;palo 2 jugador 2
+DISPLAY_ACTUAL EQU 0x28 ; Índice multiplexación (0 a 4)
+CANT_CARTAS EQU 0x29 ; 5 para comparar cartas sobre si
+CARTA_0 EQU 0x2A ; DISPLAY 0
+CARTA_1 EQU 0x2B ; DISPLAY 1
+CARTA_2 EQU 0x2C ; DISPLAY 2
+CARTA_3 EQU 0x2D ; DISPLAY 3
+CARTA_4 EQU 0x2E ; DISPLAY 4
+PALO_0 EQU 0x2F ;LED 0
+PALO_1 EQU 0x30 ;LED 1
+PALO_2 EQU 0x31 ;LED 2
+PALO_3 EQU 0x32 ;LED 3
+PALO_4 EQU 0x33 ;LED 4
+CONT_VALOR_C EQU 0x34 ;contador 0-12
+CONT_VALOR_P EQU 0x35 ;contador 0-3
+VALOR_CARTA EQU 0x36 ;Carta guardado
+VALOR_PALO EQU 0x37 ;Palo guardado
+C_AUXILIAR EQU 0x38 ; Carta en decimal
+P_AUXILIAR EQU 0x39 ; Palo en decimal
+CONTADOR EQU 0x3A
+FLAG_REPETICION EQU 0x3B; la carta se repitio
+CARTA_J_CARGADA EQU 0x3C
+UART_BYTE1 EQU 0x3D
+UART_BYTE2 EQU 0x3E
+UART_BYTE2_TEMP EQU 0x3F
+INDICE_JUGADOR EQU 0x40
+
+ 
+W_TEMP EQU 0x70
+STAT_TEMP EQU 0x71
+
+
+;-----------------------------------
+    ORG 0x04
+    GOTO ISR
+    
+    ORG 0x05
+    GOTO INICIO
+
+;-----------------------------------
+INICIO:
+    BCF STATUS, RP1 ;banco 1
+    BSF STATUS, RP0
+	
+    CLRF TRISD ;todo el puerto como salida
+	
+    MOVLW b'10000000'
+    MOVWF TRISC ;RC0-RC4 salidas del multiplexor RC7 entrada rx RC6 salida tx
+	
+    MOVLW b'00000001'
+    MOVWF TRISB ;RB0 boton, RB1-3 salida colores led rgb, RB4 turno mosfet
+	
+    MOVLW b'00000010' 
+    MOVWF OPTION_REG; Preescales 1:8 (Para aprox. 2 ms de interrupcion), Pull-up interno habilitado, Interrupción externa con flanco descendente.
+	
+    MOVLW .25
+    MOVWF SPBRG         ; Baud rate = 9600
+    BSF TXSTA, BRGH     ; Alta velocidad
+    BCF TXSTA, SYNC     ; Modo asíncrono
+	
+    BCF STATUS, RP1 ;banco 0
+    BCF STATUS, RP0
+
+    MOVLW b'11111111'
+    MOVWF PORTD
+    CLRF PORTB
+
+;Limpiar banderas
+    BCF INTCON, T0IF
+    BCF INTCON, INTF
+
+;Hablitar interrupciones
+    BSF INTCON, T0IE
+    BSF INTCON, INTE
+    BSF INTCON, GIE
+
+;Precarga TMR0
+    MOVLW .6
+    MOVWF TMR0
+
+; Habilitar puerto serie
+    BSF RCSTA, SPEN     
+
+; Habilitar recepción continua (Continuous Receive)
+    BSF RCSTA, CREN     
+
+
+    CLRF CONT_VALOR_C
+    CLRF CONT_VALOR_P
+    CLRF CANT_CARTAS
+    CLRF INDICE_JUGADOR
+    CLRF CARTA_J_CARGADA
+    CLRF C_AUXILIAR
+    CLRF P_AUXILIAR
+
+
+LOOP:
+
+; Rutina de Recepción y Procesamiento UART
+    
+    BTFSS PIR1, RCIF ; Espera a que el búfer de recepción tenga un byte listo (RCIF)
+    GOTO LOOP
+    
+    MOVF RCREG, W ;Leer el Byte 1
+    MOVWF UART_BYTE1
+    
+    BTFSS UART_BYTE1, 7 ;  Verificar si el Bit 7 es 1, revisa que este bien sincronizado
+    GOTO LOOP
+    
+;Espera y lee el Byte 2 (Carga útil de datos)
+ESPERAR_BYTE2:
+    
+    BTFSS PIR1, RCIF   ; Espera a que el búfer de recepción tenga un byte listo (RCIF)
+    GOTO ESPERAR_BYTE2
+
+    MOVF RCREG, W ;Leer el Byte 2
+    MOVWF UART_BYTE2
+    
+    BTFSS UART_BYTE1, 2  ; 1 Indica que trae una carta)
+    GOTO LOOP     ; Si es 0 es apuesta, se ignora para guardar cartas de jugadores aquí.
+
+
+;El empaquetado en el uart_byte2 es 
+;b7, que es el dato (1 carta, 0 apuesta)
+;b 6-5, palo de las cartas (00, 01, 10, 11)
+;b 4-1, valor de la carta (0-12 en binario)
+;b0 sin funcion definida 
+
+;Paso 1 guardar los valores
+   
+    MOVF UART_BYTE2, W
+    MOVWF VALOR_CARTA
+    MOVWF VALOR_PALO
+
+;Paso 2 aislar el palo
+
+    MOVLW b'01100000'
+    ANDWF VALOR_PALO, F ;borro los demas valores dejo el equivalente a 01100000
+    RRF VALOR_PALO, F ;00110000
+    RRF VALOR_PALO, F ;00011000
+    RRF VALOR_PALO, F ;00001100
+    RRF VALOR_PALO, F ;00000110
+    RRF VALOR_PALO, F ;00000011
+    MOVLW b'00000011'
+    ANDWF VALOR_PALO, F ;limpio cualquier carry que pueda haber quedado dejo el equivalente a 00000011
+
+;Paso 3 aislar la carta
+
+    MOVLW b'00011110'
+    ANDWF VALOR_CARTA, F ;borro los demas valores dejo el equivalente a 00011110
+    RRF VALOR_CARTA, F ;00001111
+    MOVLW b'00001111'
+    ANDWF VALOR_CARTA, F ;limpio cualquier carry que pueda haber quedado dejo el equivalente a 00001111
+
+;Paso 4 guardo este valor en la carta y palo que toque
+    
+    MOVLW 0x20
+    MOVWF FSR
+    MOVF INDICE_JUGADOR, W
+    ADDWF FSR, F           ; FSR apunta a la posición de carta del jugador (0x20, 0x21, 0x22 o 0x23)
+    
+; Guardar el valor de la carta formateado
+    MOVF VALOR_CARTA, W
+    MOVWF INDF          
+    
+    MOVLW .4
+    ADDWF FSR, F           ; FSR apunta a la posición de palo del jugador (0x24, 0x25, 0x26 o             0x27)
+
+    MOVF VALOR_PALO, W
+    MOVWF INDF          
+
+    INCF INDICE_JUGADOR, F
+    MOVLW .3
+    XORWF INDICE_JUGADOR, W
+    BTFSC STATUS, Z
+    CLRF INDICE_JUGADOR ; Si llega a 4, se reinicia a 0 para mantener un ciclo seguro
+
+    GOTO LOOP	
+
+;-----------------------------------
+;Tablas
+;-----------------------------------
+
+TABLA_CARTAS:
+     
+    ADDWF PCL, F
+    RETLW b'10001000' 
+    ;A
+    RETLW b'11000100' 
+    ;2
+    RETLW b'10110000' 
+    ;3
+    RETLW b'10011001' 
+    ;4
+    RETLW b'10000110' 
+    ;5
+    RETLW b'10000010' 
+    ;6
+    RETLW b'11111000' 
+    ;7
+    RETLW b'10000000' 
+    ;8
+    RETLW b'10100000' 
+    ;9
+    RETLW b'11111001' 
+    ;1 (10)
+    RETLW b'11100000' 
+    ;J
+    RETLW b'01000000' 
+    ;Q
+    RETLW b'10001001' 
+    ;K
+    
+;-----------------------------------
+
+    
+TABLA_PALOS:
+
+    ADDWF PCL, F
+    RETLW b'11110111' 
+    ;AZUL
+    RETLW b'11111011' 
+    ;VERDE
+    RETLW b'11111101' 
+    ;ROJO
+    RETLW b'11111001' 
+    ;AMARILLO
+
+;-----------------------------------
+;Subrutinas CALL
+;-----------------------------------
+    
+MULTIPLEXADO:
+    ; Apagar salidas momentáneamente para evitar efecto fantasma
+    CLRF PORTD
+    MOVLW b'00011111'
+    MOVWF PORTC
+    
+    ; Seleccionar qué display/carta mostrar según DISPLAY_ACTUAL (0 a 4)
+    MOVF DISPLAY_ACTUAL, W
+    SUBLW 0
+    BTFSC STATUS, Z
+    GOTO M_DISP0
+    
+    MOVF DISPLAY_ACTUAL, W
+    SUBLW 1
+    BTFSC STATUS, Z
+    GOTO M_DISP1
+
+    MOVF DISPLAY_ACTUAL, W
+    SUBLW 2
+    BTFSC STATUS, Z
+    GOTO M_DISP2
+
+    MOVF DISPLAY_ACTUAL, W
+    SUBLW 3
+    BTFSC STATUS, Z
+    GOTO M_DISP3
+
+    MOVF DISPLAY_ACTUAL, W
+    SUBLW 4
+    BTFSC STATUS, Z
+    GOTO M_DISP4
+
+    GOTO FIN_MULTIPLEXADO
+
+M_DISP0:
+    MOVF CARTA_0, W
+    MOVWF PORTD
+    MOVF PALO_0, W
+    MOVWF PORTB          ; O ajustar según los pines de color de PORTB
+    BCF PORTC, 0         ; Activar el display 0 (RC0)
+    GOTO ACTUALIZAR_INDICE
+
+M_DISP1:
+    MOVF CARTA_1, W
+    MOVWF PORTD
+    MOVF PALO_1, W
+    MOVWF PORTB
+    BCF PORTC, 1         ; Activar el display 1 (RC1)
+    GOTO ACTUALIZAR_INDICE
+
+M_DISP2:
+    MOVF CARTA_2, W
+    MOVWF PORTD
+    MOVF PALO_2, W
+    MOVWF PORTB
+    BCF PORTC, 2         ; Activar el display 2 (RC2)
+    GOTO ACTUALIZAR_INDICE
+
+M_DISP3:
+    MOVF CARTA_3, W
+    MOVWF PORTD
+    MOVF PALO_3, W
+    MOVWF PORTB
+    BCF PORTC, 3         ; Activar el display 3 (RC3)
+    GOTO ACTUALIZAR_INDICE
+
+M_DISP4:
+    MOVF CARTA_4, W
+    MOVWF PORTD
+    MOVF PALO_4, W
+    MOVWF PORTB
+    BCF PORTC, 4         ; Activar el display 4 (RC4)
+    GOTO ACTUALIZAR_INDICE
+
+ACTUALIZAR_INDICE:
+    INCF DISPLAY_ACTUAL, F
+    MOVLW 0x05
+    XORWF DISPLAY_ACTUAL, W
+    BTFSC STATUS, Z
+    CLRF DISPLAY_ACTUAL  ; Si llega a 5, reinicia a 0
+
+FIN_MULTIPLEXADO:
+    RETURN
+
+;-----------------------------------
+
+
+CARTAS_J_TABLA:
+    
+    MOVLW 0x20 
+    MOVWF FSR
+    MOVLW .4
+    MOVWF CONTADOR
+    INCF CARTA_J_CARGADA
+    
+ASOCIAR:
+    
+    MOVF INDF, W
+    CALL TABLA_CARTAS
+    MOVWF INDF
+   
+    MOVLW .4
+    ADDWF FSR, F
+    
+    MOVF INDF, W
+    CALL TABLA_PALOS
+    MOVWF INDF
+    
+    MOVLW .3
+    SUBWF FSR, F
+    
+    DECFSZ CONTADOR, F
+    GOTO ASOCIAR
+    RETURN
+
+;-----------------------------------
+
+COMPARAR_PALO_JUGADOR:
+	
+    MOVLW .4
+    ADDWF FSR, F
+    
+    MOVF VALOR_PALO, W
+    XORWF INDF, W
+    
+    BTFSC STATUS, Z
+    INCF FLAG_REPETICION,F
+    
+    MOVLW .4
+    SUBWF FSR, F
+    
+    RETURN
+
+;-----------------------------------
+
+COMPARAR_PALO_DEALER:
+	
+    MOVLW .5
+    ADDWF FSR, F
+    MOVF VALOR_PALO, W
+    XORWF INDF, W
+    
+    BTFSC STATUS, Z
+    INCF FLAG_REPETICION,F
+    
+    MOVLW .5
+    SUBWF FSR, F
+    
+    RETURN
+
+;-----------------------------------
+
+PAQUETE_ENVIO:
+
+TX_LIBRE1:    ; Esperar a que el transmisor UART esté libre
+    
+    BTFSS PIR1, TXIF
+    GOTO TX_LIBRE1
+    ;contador 0-2 para mandar en el turno que vuelva al dealer
+    MOVLW b'10000100' ;b7 sincronizacion, b6-5 turno dealer, b4-3 el dealer no deja,b2 se manda una carta
+    MOVWF TXREG
+
+TX_LIBRE2:    ;Esperar a que el búfer de transmisión esté listo nuevamente
+
+    BTFSS PIR1, TXIF
+    GOTO TX_LIBRE2
+    
+;paso 1 habilitamos el bit que indica que el dato es una carta
+
+    MOVLW b'10000000'
+    MOVWF UART_BYTE2_TEMP   ; Variable temporal de 1 byte para armar el byte 2
+
+;paso 2 agregamos el palo  CLRF 
+    
+    RLF P_AUXILIAR, F ;asumiendo valor ‘00000110’ lo busco llevar a los bit6-5
+    RLF P_AUXILIAR, F ;‘00001100’
+    RLF P_AUXILIAR, F ;‘00011000’
+    RLF P_AUXILIAR, F ;‘00110000’
+    RLF P_AUXILIAR, F ;‘01100000’
+    MOVLW b'01100000'
+    ANDWF P_AUXILIAR, W       ; limpiar cualquier carry
+    ADDWF UART_BYTE2_TEMP, F
+
+;paso 3 agregamos la carta     
+
+    RLF C_AUXILIAR, F ;asumiendo valor ‘00011110’ lo busco llevar a los bit4-1 
+    MOVLW b'00011110'
+    ANDWF C_AUXILIAR, W       ; limpiar cualquier carry
+    ADDWF UART_BYTE2_TEMP, F
+    MOVF UART_BYTE2_TEMP, W
+    MOVWF TXREG
+
+    RETURN
+
+;-----------------------------------
+;Interrupcion
+;-----------------------------------    
+
+ISR:
+
+Guardar_Contexto:
+; ----- Guardado de contexto -----
+    MOVWF W_TEMP
+    SWAPF STATUS, W
+    MOVWF STAT_TEMP
+
+
+DISCRIMINAR:
+; ---- Discriminación de interrupciones -----
+    BTFSC INTCON, RBIF
+    GOTO ISR_TECLA
+    BTFSC INTCON, TMR0IF
+    GOTO ISR_TMR0
+    GOTO FIN_ISR
+
+;-----------------------------------    
+;Interrupcion Timer
+;-----------------------------------    
+
+    
+ISR_TMR0:
+
+    BCF STATUS, RP0
+    BCF STATUS, RP1
+
+    BCF INTCON, T0IF
+	
+    MOVLW .6
+    MOVWF TMR0
+
+    CALL MULTIPLEXADO
+
+;Incremento de cartas
+    INCF CONT_VALOR_C, F
+    MOVLW 0x0D
+    XORWF CONT_VALOR_C, W
+    BTFSC STATUS, Z
+    CLRF CONT_VALOR_C
+
+;Incremento de palos
+    INCF CONT_VALOR_P
+    MOVLW 0X04
+    XORWF CONT_VALOR_P, W
+    BTFSC STATUS, Z
+    CLRF CONT_VALOR_P
+
+    GOTO FIN_ISR
+
+
+;-----------------------------------
+;Interrupcion Boton
+;-----------------------------------
+
+ISR_TECLA:
+   
+    BCF INTCON, INTF
+
+;carga los valores del timer en variables
+    
+    MOVF CONT_VALOR_C, W
+    MOVWF C_AUXILIAR
+    MOVWF VALOR_CARTA
+   
+    MOVF CONT_VALOR_P, W
+    MOVWF P_AUXILIAR
+    MOVWF VALOR_PALO
+
+    MOVF VALOR_CARTA, W
+    CALL TABLA_CARTAS
+    MOVWF VALOR_CARTA
+
+    MOVF VALOR_PALO, W
+    CALL TABLA_PALOS
+    MOVWF VALOR_PALO
+
+    
+;carga los valores de las cartas de jugador en valor de tabla	
+    MOVF CARTA_J_CARGADA, F
+    BTFSC STATUS, Z
+    CALL CARTAS_J_TABLA
+
+COMPARAR_CARTA_JUGADOR:
+
+    MOVLW 0x20
+    MOVWF FSR
+    MOVLW .4
+    MOVWF CONTADOR
+    CLRF FLAG_REPETICION
+
+COMPARACION_J: ;Bucle
+
+    MOVF VALOR_CARTA, W
+    XORWF INDF, W ;compara las cartas
+    
+    BTFSC STATUS, Z
+    CALL COMPARAR_PALO_JUGADOR
+    
+    BTFSC FLAG_REPETICION, 0
+    GOTO CARTA_REPETIDA
+    INCF FSR, F
+    
+    DECFSZ CONTADOR, F
+    GOTO COMPARACION_J
+
+
+COMPARAR_CARTA_DEALER:
+
+    MOVLW 0x2A
+    MOVWF FSR
+    MOVF CANT_CARTAS, W
+    MOVWF CONTADOR
+    CLRF FLAG_REPETICION
+    
+COMPARACION_D: ;Bucle
+
+    MOVF CANT_CARTAS, F
+    BTFSC STATUS, Z
+    GOTO CARGAR_CARTA
+    
+    MOVF VALOR_CARTA, W
+    XORWF INDF, W
+    
+    BTFSC STATUS, Z
+    CALL COMPARAR_PALO_DEALER
+    
+    BTFSC FLAG_REPETICION, 0
+    GOTO CARTA_REPETIDA
+    INCF FSR, F
+    
+    DECFSZ CONTADOR, F
+    GOTO COMPARACION_D
+
+    GOTO CARGAR_CARTA
+    
+
+CARTA_REPETIDA:
+	
+    MOVLW 0x2F ;Palo_0
+    MOVWF FSR
+    
+    MOVF CANT_CARTAS, W
+    ADDWF FSR, F
+    
+    MOVLW .3 
+    CALL TABLA_PALOS
+    
+    MOVWF INDF
+    
+    GOTO FIN_ISR
+
+	    
+CARGAR_CARTA:
+    	
+    MOVLW 0x2A
+    MOVWF FSR ;Se ubica en carta_0
+
+    MOVF CANT_CARTAS, W
+    ADDWF FSR, F ;suma la cantidad de lugares de la carta que hay que cargar
+
+    MOVF VALOR_CARTA, W
+    MOVWF INDF ;carta guardada
+    
+    MOVLW .5
+    ADDWF FSR, F ;nos ubicamos en el palo de la carta
+    
+    MOVF VALOR_PALO, W
+    MOVWF INDF ;palo guardado
+
+    CALL PAQUETE_ENVIO
+    
+    INCF CANT_CARTAS, F
+    MOVLW .4
+    XORWF CANT_CARTAS, W
+    BTFSC STATUS, Z
+    CLRF CANT_CARTAS
+
+
+    GOTO FIN_ISR
+;hacer un xor para que cant cartas no pueda ser mas que 4
+; tiene que enviar la carta al tx
+;b7, que es el dato (1 carta, 0 apuesta)
+;b 6-5, palo de las cartas (00, 01, 10, 11)
+;b 4-1, valor de la carta (0-12 en binario)
+;b0 sin funcion definida 
+
+
+FIN_ISR:
+    
+    MOVWF STATUS
+    SWAPF W_TEMP,F
+    SWAPF W_TEMP,W
+
+    RETFIE
+
+    
+    end
+
+
+
+```
+
 </details>
 
 </details>
@@ -103,7 +800,52 @@ asdasd
 
 <details>
 <summary>diagrama de flujo de los jugadores</summary>
+
+```mermaid
+
+---
+config:
+  theme: redux-dark-color
+---
+flowchart TD
+    A([Inicio / Reset]) --> B[Configurar Puertos, UART 9600 bps e Interrupciones]
+    B --> C[Apagar Displays, LEDs y Limpiar Variables RAM]
+    C --> D((LOOP Principal))
+    D --> D
+
+    subgraph ISR [Rutina de Interrupción]
+        E{¿Origen de Interrupción?}
+        
+        E -- TMR0 --> F[Multiplexar 2 Displays y 2 LEDs RGB]
+        F --> G([RETFIE])
+
+        E -- UART RX --> H[Leer Byte 1 y Byte 2]
+        H --> I{¿Bit Reset = 1?}
+        I -- Sí --> C
+        I -- No --> J{¿Es Carta Privada?}
+        J -- Sí --> K[Guardar Carta y Palo en RAM]
+        K --> G
+        J -- No --> L[Actualizar Apuesta Vigente y Habilitar Turno]
+        L --> G
+
+        E -- Pulsador / Tecla --> M{¿Tiene el Turno?}
+        M -- No --> G
+        M -- Sí --> N[Leer Acción: Pasar, Apostar, Igualar o Bajarse]
+        N --> O[Armar Trama 2 Bytes y Ceder Turno]
+        O --> P[Enviar Trama por UART a PC]
+        P --> Q[Deshabilitar Turno Local]
+        Q --> G
+    end
+
+```
+
+</details>
+
+<details>
+<summary>Esquema e imagenes de los jugadores</summary>
 asdasd
+</details>
+
 </details>
 
 <details>
@@ -829,6 +1571,7 @@ END
 
 <details>
 <summary>codigo del jugador 2</summary>
+
 ```assembly
 
 LIST P=16F887
